@@ -1,13 +1,19 @@
-from fastapi import FastAPI, HTTPException
+from io import BytesIO
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from app.bigram_model import BigramModel
+from app.cifar10_classifier import Cifar10Classifier
 from app.embedding_model import EmbeddingModel
 
 
 app = FastAPI(
-    title="Simple Text Generation and Embedding API",
-    description="Generate text with a bigram model and retrieve spaCy embeddings.",
+    title="SPS Generative AI API",
+    description=(
+        "Generate text, retrieve spaCy embeddings, and classify CIFAR-10 images."
+    ),
     version="1.0.0",
 )
 
@@ -28,6 +34,7 @@ corpus = [
 # Build the model once when the application starts
 bigram_model = BigramModel(corpus)
 embedding_model = EmbeddingModel()
+cifar10_classifier = Cifar10Classifier()
 
 
 class TextGenerationRequest(BaseModel):
@@ -48,11 +55,18 @@ class EmbeddingResponse(BaseModel):
     embedding: list[float]
 
 
+class ClassificationResponse(BaseModel):
+    predicted_class: str
+    class_index: int
+    confidence: float
+    probabilities: dict[str, float]
+
+
 @app.get("/")
 def read_root():
     return {
-        "message": "Simple Text Generation and Embedding API",
-        "endpoints": ["/generate", "/embedding"],
+        "message": "SPS Generative AI API",
+        "endpoints": ["/generate", "/embedding", "/classify"],
     }
 
 
@@ -80,4 +94,31 @@ def create_embedding(request: EmbeddingRequest):
         query_word=normalized_word,
         dimension=len(embedding),
         embedding=embedding,
+    )
+
+
+@app.post("/classify", response_model=ClassificationResponse)
+async def classify_image(
+    image: UploadFile = File(description="An image to classify as CIFAR-10"),
+):
+    """Classify an uploaded image into one of the ten CIFAR-10 classes."""
+    image_bytes = await image.read()
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as uploaded_image:
+            prepared_image = uploaded_image.convert("RGB")
+    except (UnidentifiedImageError, OSError) as error:
+        raise HTTPException(
+            status_code=422,
+            detail="The uploaded file is not a readable image.",
+        ) from error
+
+    class_index, predicted_class, confidence, probabilities = (
+        cifar10_classifier.predict(prepared_image)
+    )
+    return ClassificationResponse(
+        predicted_class=predicted_class,
+        class_index=class_index,
+        confidence=confidence,
+        probabilities=probabilities,
     )

@@ -1,13 +1,16 @@
 [project]
 name = "sps-genai"
 version = "0.1.0"
-description = "FastAPI service for bigram text generation and spaCy word embeddings"
+description = "FastAPI service for text generation, word embeddings, and CIFAR-10 image classification"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "en-core-web-lg",
     "fastapi[standard]>=0.141.1",
+    "pillow>=12.0.0",
     "spacy>=3.8.7",
+    "torch>=2.11.0",
+    "torchvision>=0.26.0",
 ]
 
 [project.scripts]
@@ -19,3 +22,14 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 en-core-web-lg = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl" }
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
