@@ -48,6 +48,19 @@ Then open <http://127.0.0.1:8000/docs> or query the endpoint with `curl`.
 
 ## Assignment 2: CIFAR-10 CNN
 
+### Assignment 2 code map
+
+- `app/cifar10_model.py`: required CNN architecture and shared image preprocessing.
+- `train_cifar10.py`: CIFAR-10 loading, training, evaluation, and checkpoint saving.
+- `app/cifar10_classifier.py`: checkpoint loading and image inference logic.
+- `main.py`: FastAPI `POST /classify` endpoint.
+- `artifacts/cifar10_cnn.pt`: trained model checkpoint.
+- `Dockerfile`: deployable FastAPI image containing the trained model.
+- `pyproject.toml` and `uv.lock`: Python and CPU-only Docker dependencies.
+
+The main implementation was added in commit `cb5a2f8` (`Add CIFAR-10 CNN
+classifier and API endpoint`).
+
 The Assignment 2 model follows the required 64 x 64 architecture:
 
 ```text
