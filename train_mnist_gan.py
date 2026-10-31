@@ -114,7 +114,7 @@ def main():
         }
         history.append(row)
         with (args.output_dir / "mnist_gan_training.csv").open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, fieldnames=list(row))
+            writer = csv.DictWriter(stream, fieldnames=list(row), lineterminator="\n")
             writer.writeheader()
             writer.writerows(history)
 
