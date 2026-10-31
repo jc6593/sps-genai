@@ -1,18 +1,20 @@
 from io import BytesIO
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from app.bigram_model import BigramModel
 from app.cifar10_classifier import Cifar10Classifier
 from app.embedding_model import EmbeddingModel
+from app.mnist_generator import MnistGenerator
 
 
 app = FastAPI(
     title="SPS Generative AI API",
     description=(
-        "Generate text, retrieve spaCy embeddings, and classify CIFAR-10 images."
+        "Generate text and MNIST images, retrieve word embeddings, and classify CIFAR-10 images."
     ),
     version="1.0.0",
 )
@@ -35,6 +37,7 @@ corpus = [
 bigram_model = BigramModel(corpus)
 embedding_model = EmbeddingModel()
 cifar10_classifier = Cifar10Classifier()
+mnist_generator = MnistGenerator()
 
 
 class TextGenerationRequest(BaseModel):
@@ -62,11 +65,15 @@ class ClassificationResponse(BaseModel):
     probabilities: dict[str, float]
 
 
+class ImageGenerationRequest(BaseModel):
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+
+
 @app.get("/")
 def read_root():
     return {
         "message": "SPS Generative AI API",
-        "endpoints": ["/generate", "/embedding", "/classify"],
+        "endpoints": ["/generate", "/embedding", "/classify", "/generate-image"],
     }
 
 
@@ -122,3 +129,14 @@ async def classify_image(
         confidence=confidence,
         probabilities=probabilities,
     )
+
+
+@app.post(
+    "/generate-image",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "Generated MNIST image"}},
+)
+def generate_image(request: ImageGenerationRequest):
+    """Generate one 28 x 28 grayscale digit image."""
+    image_bytes = mnist_generator.generate(request.seed)
+    return Response(content=image_bytes, media_type="image/png")

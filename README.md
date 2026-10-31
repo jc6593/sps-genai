@@ -1,12 +1,13 @@
 # SPS Generative AI API
 
-This FastAPI project provides three endpoints:
+This FastAPI project provides four endpoints:
 
 - `POST /generate` generates text with a simple bigram model.
 - `POST /embedding` returns the 300-dimensional `en_core_web_lg` spaCy
   embedding for a query word.
 - `POST /classify` classifies an uploaded image as one of the ten CIFAR-10
   classes.
+- `POST /generate-image` generates a 28 x 28 grayscale handwritten digit with a GAN.
 
 ## Local setup
 
@@ -40,8 +41,8 @@ The example above abbreviates the vector; the API returns all 300 values.
 ## Docker
 
 ```bash
-docker build -t sps-genai-assignment2 .
-docker run --rm -p 8000:80 sps-genai-assignment2
+docker build -t sps-genai-assignment3 .
+docker run --rm -p 8000:80 sps-genai-assignment3
 ```
 
 Then open <http://127.0.0.1:8000/docs> or query the endpoint with `curl`.
@@ -124,3 +125,69 @@ uv run python train_cifar10.py \
   --max-test-batches 2 \
   --checkpoint /tmp/cifar10_cnn_smoke.pt
 ```
+
+## Assignment 3: MNIST GAN
+
+### Code map
+
+- `app/mnist_gan.py`: the Generator and Discriminator from Part 1.
+- `train_mnist_gan.py`: MNIST preprocessing, alternating training, and saved weights.
+- `app/mnist_generator.py`: loads the trained Generator and converts its output to PNG.
+- `main.py`: the `POST /generate-image` endpoint.
+- `artifacts/mnist_generator.pt`: trained Generator weights and training settings.
+- `artifacts/mnist_gan_samples.png`: 64 generated images from fixed noise vectors.
+- `artifacts/mnist_gan_training.csv`: losses recorded during training.
+- `assignment3_answers.txt`: worked answers to Part 3.
+
+The Generator uses the required layers:
+
+```text
+100 noise values
+-> Linear(100, 6272) -> reshape to 128 x 7 x 7
+-> ConvTranspose2d(128, 64, 4, stride=2, padding=1) -> BatchNorm2d -> ReLU
+-> ConvTranspose2d(64, 1, 4, stride=2, padding=1) -> Tanh
+-> 1 x 28 x 28 image
+```
+
+The Discriminator uses:
+
+```text
+1 x 28 x 28 image
+-> Conv2d(1, 64, 4, stride=2, padding=1) -> LeakyReLU(0.2)
+-> Conv2d(64, 128, 4, stride=2, padding=1) -> BatchNorm2d -> LeakyReLU(0.2)
+-> Flatten -> Linear(6272, 1) -> Sigmoid
+```
+
+Sigmoid gives the real/fake probability used by binary cross-entropy loss.
+MNIST pixels are normalized to [-1, 1] to match the Generator's Tanh output.
+The Discriminator learns from real images labeled 1 and generated images labeled 0.
+The Generator is then updated with target 1 while the Discriminator's weights are fixed.
+
+Train the model:
+
+```bash
+uv run python train_mnist_gan.py --epochs 20 --batch-size 128 --seed 42
+```
+
+The saved Generator was trained for 20 epochs on all 60,000 MNIST training
+images, using batch size 128, learning rate 0.0002, and seed 42.
+The recorded losses are in `artifacts/mnist_gan_training.csv`.
+
+![Generated MNIST samples](artifacts/mnist_gan_samples.png)
+
+Training selects CUDA, Apple MPS, or CPU, depending on availability. To choose
+one explicitly, add `--device cpu`, `--device mps`, or `--device cuda`.
+The API uses CPU inference and the saved checkpoint, so it does not train on startup.
+
+After starting the API locally or with Docker, generate an image:
+
+```bash
+curl -X POST http://127.0.0.1:8000/generate-image \
+  -H 'Content-Type: application/json' \
+  -d '{"seed":42}' \
+  --output digit.png
+```
+
+The response is a PNG image. Repeat a seed to reproduce an image, or send `{}`
+for a random one. This is an unconditional GAN, so a request does not select
+a particular digit. Generated images vary in quality.

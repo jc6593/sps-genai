@@ -1,0 +1,52 @@
+Assignment 3 - Part 3: Building Blocks of GAN
+Code: https://github.com/jc6593/sps-genai
+
+Question 1
+For each spatial dimension, with dilation equal to 1:
+O = (I - 1)S - 2P + K + OP
+Substituting I = 8, S = 2, P = 1, K = 4, and OP = 1:
+O = (8 - 1) x 2 - 2 x 1 + 4 + 1 = 17.
+The output feature map is 17 x 17.
+
+Question 2
+The stride multiplies (I - 1), so increasing the stride from 2 to 3
+increases each output dimension by I - 1.
+Using the values from Question 1:
+O = (8 - 1) x 3 - 2 x 1 + 4 + 1 = 24.
+The output changes from 17 x 17 to 24 x 24, an increase of 7 per dimension.
+
+Question 3
+With dilation equal to 1, the formula for each dimension is:
+O = (I - 1)S - 2P + K + OP.
+Apply it separately to the height and width. I is the input size, K is the
+kernel size, S is the stride, P is the padding, and OP is the output padding.
+
+Question 4
+One possible configuration is kernel size 2 x 2, stride 2, padding 0,
+and output padding 0, with dilation equal to 1.
+O = (16 - 1) x 2 - 2 x 0 + 2 + 0 = 32.
+This produces a 32 x 32 output from a 16 x 16 input.
+
+Question 5
+For the mini-batch [6, 8, 10, 6], the mean is:
+mean = (6 + 8 + 10 + 6) / 4 = 7.5.
+Subtracting the mean gives [-1.5, 0.5, 2.5, -1.5].
+The batch variance uses the average squared deviation:
+variance = (2.25 + 0.25 + 6.25 + 2.25) / 4 = 2.75.
+The standard deviation is sqrt(2.75) = 1.6583.
+Ignoring the small numerical-stability constant, normalization gives:
+[-1.5, 0.5, 2.5, -1.5] / sqrt(2.75)
+= [-0.9045, 0.3015, 1.5076, -0.9045].
+The normalized values have mean 0 and variance 1 before rounding.
+
+Question 6
+ReLU(x) = max(0, x).
+LeakyReLU(x) = x if x >= 0, and alpha x if x < 0.
+ReLU maps every negative input to zero. LeakyReLU keeps a small negative
+slope alpha, usually with 0 < alpha < 1. In this assignment, alpha = 0.2.
+
+Question 7
+ReLU has zero gradient for negative inputs. A unit that keeps receiving
+negative inputs may stop learning because no gradient passes through it.
+LeakyReLU keeps a small nonzero gradient on the negative side, which can
+reduce the dying-ReLU problem and help gradients pass through deep networks.
