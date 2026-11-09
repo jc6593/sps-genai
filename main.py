@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.bigram_model import BigramModel
 from app.cifar10_classifier import Cifar10Classifier
+from app.cifar10_image_generator import GeneratorName, load_cifar10_generator
 from app.embedding_model import EmbeddingModel
 from app.mnist_generator import MnistGenerator
 
@@ -14,7 +15,7 @@ from app.mnist_generator import MnistGenerator
 app = FastAPI(
     title="SPS Generative AI API",
     description=(
-        "Generate text and MNIST images, retrieve word embeddings, and classify CIFAR-10 images."
+        "Generate text and images, retrieve word embeddings, and classify CIFAR-10 images."
     ),
     version="1.0.0",
 )
@@ -73,7 +74,10 @@ class ImageGenerationRequest(BaseModel):
 def read_root():
     return {
         "message": "SPS Generative AI API",
-        "endpoints": ["/generate", "/embedding", "/classify", "/generate-image"],
+        "endpoints": [
+            "/generate", "/embedding", "/classify", "/generate-image",
+            "/generate-diffusion", "/generate-ebm",
+        ],
     }
 
 
@@ -140,3 +144,34 @@ def generate_image(request: ImageGenerationRequest):
     """Generate one 28 x 28 grayscale digit image."""
     image_bytes = mnist_generator.generate(request.seed)
     return Response(content=image_bytes, media_type="image/png")
+
+
+def generate_cifar10_image(model: GeneratorName, seed: int | None) -> Response:
+    try:
+        generator = load_cifar10_generator(model)
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"The CIFAR-10 {model} checkpoint is missing. Train the model first.",
+        ) from error
+    return Response(content=generator.generate(seed), media_type="image/png")
+
+
+@app.post(
+    "/generate-diffusion",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "Generated RGB image"}},
+)
+def generate_diffusion(request: ImageGenerationRequest):
+    """Generate a 32 x 32 RGB image by denoising."""
+    return generate_cifar10_image("diffusion", request.seed)
+
+
+@app.post(
+    "/generate-ebm",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "Generated RGB image"}},
+)
+def generate_ebm(request: ImageGenerationRequest):
+    """Generate a 32 x 32 RGB image with Langevin sampling."""
+    return generate_cifar10_image("ebm", request.seed)

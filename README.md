@@ -1,6 +1,6 @@
 # SPS Generative AI API
 
-This FastAPI project provides four endpoints:
+This FastAPI project provides six endpoints:
 
 - `POST /generate` generates text with a simple bigram model.
 - `POST /embedding` returns the 300-dimensional `en_core_web_lg` spaCy
@@ -8,6 +8,8 @@ This FastAPI project provides four endpoints:
 - `POST /classify` classifies an uploaded image as one of the ten CIFAR-10
   classes.
 - `POST /generate-image` generates a 28 x 28 grayscale handwritten digit with a GAN.
+- `POST /generate-diffusion` generates a 32 x 32 RGB image using a diffusion model.
+- `POST /generate-ebm` generates a 32 x 32 RGB image using an energy-based model.
 
 ## Local setup
 
@@ -191,3 +193,45 @@ curl -X POST http://127.0.0.1:8000/generate-image \
 The response is a PNG image. Repeat a seed to reproduce an image, or send `{}`
 for a random one. This is an unconditional GAN, so a request does not select
 a particular digit. Generated images vary in quality.
+
+## Assignment 4: CIFAR-10 image generation
+
+Both generators train on the native 32 x 32 RGB CIFAR-10 training images with
+pixel values scaled to [-1, 1]. Both are unconditional generators.
+
+- `app/cifar10_diffusion.py` adds noise according to the Module 8 offset
+  cosine schedule and trains a time-conditioned U-Net with L1 noise prediction
+  loss. To generate an image, it runs the schedule backward from Gaussian noise.
+- `app/cifar10_ebm.py` scores each image with one scalar energy. Langevin
+  sampling differentiates that energy with respect to image pixels and updates
+  the pixels to seek lower energy.
+- `train_cifar10_generators.py` trains either model. For the EBM, a replay buffer
+  supplies starting points for negative samples. The weight update reduces
+  energies on real images relative to the sampled negatives.
+- `app/cifar10_image_generator.py` loads the trained weights on the CPU and
+  converts samples to PNG. `main.py` exposes both generators through FastAPI.
+
+Train the models and save their weights to `artifacts/cifar10_diffusion.pt`
+and `artifacts/cifar10_ebm.pt`:
+
+```bash
+uv run python train_cifar10_generators.py diffusion --epochs 3
+uv run python train_cifar10_generators.py ebm --epochs 2
+```
+
+The included checkpoints use all 50,000 training images per epoch, batch size
+128, and seed 42. The EBM uses eight Langevin steps per training batch and
+128 steps to generate an API sample.
+
+After training, start the API with `uv run fastapi dev main.py` and request images:
+
+```bash
+curl --fail -X POST http://127.0.0.1:8000/generate-diffusion \
+  -H 'Content-Type: application/json' -d '{"seed":42}' --output diffusion.png
+curl --fail -X POST http://127.0.0.1:8000/generate-ebm \
+  -H 'Content-Type: application/json' -d '{"seed":42}' --output ebm.png
+```
+
+Both endpoints return one PNG image. A repeated seed reproduces a sample
+with the same weights. Use `{}` for a random seed. If a model checkpoint is
+missing, its endpoint returns HTTP 503.
