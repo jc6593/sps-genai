@@ -1,6 +1,6 @@
 # SPS Generative AI API
 
-This FastAPI project provides six endpoints:
+This FastAPI project provides seven endpoints:
 
 - `POST /generate` generates text with a simple bigram model.
 - `POST /embedding` returns the 300-dimensional `en_core_web_lg` spaCy
@@ -10,6 +10,7 @@ This FastAPI project provides six endpoints:
 - `POST /generate-image` generates a 28 x 28 grayscale handwritten digit with a GAN.
 - `POST /generate-diffusion` generates a 32 x 32 RGB image using a diffusion model.
 - `POST /generate-ebm` generates a 32 x 32 RGB image using an energy-based model.
+- `POST /generate-rl` generates a text continuation with the Assignment 5 Transformer.
 
 ## Local setup
 
@@ -235,3 +236,50 @@ curl --fail -X POST http://127.0.0.1:8000/generate-ebm \
 Both endpoints return one PNG image. A repeated seed reproduces a sample
 with the same weights. Use `{}` for a random seed. If a model checkpoint is
 missing, its endpoint returns HTTP 503.
+
+## Assignment 5 · Reinforcement learning post-training
+
+The model uses the word tokenizer and one-block GPT architecture from the
+Module 9 practical. Its next-word pretraining uses Project Gutenberg's
+*The Count of Monte Cristo* (ebook 1184). Module 11's policy-gradient approach
+then updates the pretrained model to begin its continuation with `the captain`.
+
+The policy samples the first two new words. It earns one point for `the` in
+the first position and one for `captain` in the second. The log probability
+of each sampled word is weighted by its return after subtracting the batch
+mean for that position. A KL penalty to the original model discourages
+unnecessary changes to the next-word distribution. Evaluation measures exact
+prefix matches on 16 held-out prompts with both sampling and greedy decoding.
+
+### Train and evaluate
+
+```bash
+uv run python train_assignment5.py
+```
+
+The trainer downloads the original text to `data/monte_cristo.txt` when
+needed. To train from a local copy, add `--corpus /path/to/pg1184.txt`.
+It uses 400 batches of next-word pretraining followed by 300 updates of
+reinforcement learning by default. A compatible Module 9 checkpoint can be
+reused with `--base-checkpoint /path/to/module9_gpt.pt`. It must contain
+`config`, `index_to_word`, and `state_dict`.
+
+The script saves the trained weights, configuration, and vocabulary to
+`artifacts/assignment5_rl.pt`. It writes the before-and-after format scores
+to `artifacts/assignment5_rl.json`.
+
+### Serve the trained checkpoint with Docker
+
+```bash
+docker build -t sps-genai-assignment5 .
+docker run --rm -p 8000:80 sps-genai-assignment5
+curl --fail -X POST http://127.0.0.1:8000/generate-rl \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"at midnight","max_new_words":12}'
+```
+
+The response contains the input prompt, generated continuation, and
+`matches_format`. A temperature of zero (the default) selects the most likely
+word. Set a positive temperature to sample and provide a seed for repeatable
+sampling. The server loads the checkpoint on the CPU and returns HTTP 503 if
+the checkpoint is missing.

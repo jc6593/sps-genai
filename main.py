@@ -10,6 +10,7 @@ from app.cifar10_classifier import Cifar10Classifier
 from app.cifar10_image_generator import GeneratorName, load_cifar10_generator
 from app.embedding_model import EmbeddingModel
 from app.mnist_generator import MnistGenerator
+from app.transformer_model import FORMAT_PREFIX, load_transformer_generator
 
 
 app = FastAPI(
@@ -46,6 +47,19 @@ class TextGenerationRequest(BaseModel):
     length: int = Field(ge=1, le=100)
 
 
+class TransformerRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000, examples=["at midnight"])
+    max_new_words: int = Field(default=12, ge=2, le=50)
+    temperature: float = Field(default=0.0, ge=0, le=2)
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+
+
+class TransformerResponse(BaseModel):
+    prompt: str
+    continuation: str
+    matches_format: bool
+
+
 class EmbeddingRequest(BaseModel):
     query_word: str = Field(
         min_length=1,
@@ -76,7 +90,7 @@ def read_root():
         "message": "SPS Generative AI API",
         "endpoints": [
             "/generate", "/embedding", "/classify", "/generate-image",
-            "/generate-diffusion", "/generate-ebm",
+            "/generate-diffusion", "/generate-ebm", "/generate-rl",
         ],
     }
 
@@ -89,6 +103,27 @@ def generate_text(request: TextGenerationRequest):
     )
 
     return {"generated_text": generated_text}
+
+
+@app.post("/generate-rl", response_model=TransformerResponse)
+def generate_rl_text(request: TransformerRequest):
+    """Generate a continuation with the RL-post-trained Module 9 Transformer."""
+    try:
+        generator = load_transformer_generator()
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=503, detail="The Assignment 5 checkpoint is missing.") from error
+
+    try:
+        words = generator.generate(
+            request.prompt, request.max_new_words, request.temperature, request.seed
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return TransformerResponse(
+        prompt=request.prompt,
+        continuation=" ".join(words),
+        matches_format=tuple(words[:len(FORMAT_PREFIX)]) == FORMAT_PREFIX,
+    )
 
 
 @app.post("/embedding", response_model=EmbeddingResponse)
