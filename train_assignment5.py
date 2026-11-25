@@ -14,6 +14,8 @@ from app.transformer_model import FORMAT_PREFIX, GPT, load_checkpoint, tokenize
 
 
 CORPUS_URL = "https://www.gutenberg.org/cache/epub/1184/pg1184.txt"
+CORPUS_MIRROR = "https://gutenberg.pglaf.org/1/1/8/1184/1184-0.txt"
+CORPUS_CACHE = Path("data/monte_cristo.txt")
 BASE_CONFIG = {
     "max_len": 128,
     "vocab_size": 10_000,
@@ -35,26 +37,37 @@ TEST_PROMPTS = (
 )
 
 
-def read_corpus(path: Path) -> list[str]:
-    if not path.exists():
+def download_corpus() -> str:
+    errors = []
+    for url in (CORPUS_URL, CORPUS_MIRROR):
         try:
-            with urlopen(CORPUS_URL, timeout=20) as response:
-                downloaded_text = response.read()
+            with urlopen(url, timeout=12) as response:
+                return response.read().decode("utf-8-sig")
         except (URLError, TimeoutError) as error:
-            raise ValueError(
-                f"Could not download Module 9's corpus ({error}). "
-                f"Download {CORPUS_URL} and pass its path with --corpus."
-            ) from error
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(downloaded_text)
-    text = path.read_text(encoding="utf-8-sig")
+            errors.append(str(error))
+    raise ValueError(
+        f"Could not download Module 9's corpus ({'; '.join(errors)}). "
+        f"Download {CORPUS_MIRROR} and pass the local file path with --corpus."
+    )
+
+
+def read_corpus(path: Path | None) -> list[str]:
+    if path is not None and not path.is_file():
+        raise ValueError(f"Corpus file not found: {path}. Pass the path to an existing .txt file.")
+    corpus_file = CORPUS_CACHE if path is None else path
+    needs_download = not corpus_file.is_file()
+    text = download_corpus() if needs_download else corpus_file.read_text(encoding="utf-8-sig")
     start = text.find("Chapter 1")
     end = text.rfind("Chapter 5")
     if 0 <= start < end:
-        text = text[start:end]
-    words = tokenize(text)
+        words = tokenize(text[start:end])
+    else:
+        words = tokenize(text)
     if len(words) <= 30 or not set(FORMAT_PREFIX).issubset(words):
         raise ValueError("The corpus must be the Module 9 text and contain 'the' and 'captain'.")
+    if needs_download:
+        corpus_file.parent.mkdir(parents=True, exist_ok=True)
+        corpus_file.write_text(text, encoding="utf-8")
     return words
 
 
@@ -134,6 +147,21 @@ def measure_prefix(
     }
 
 
+def continuation_kl(
+    policy: GPT, reference: GPT, context: torch.Tensor, vocabulary_size: int
+) -> torch.Tensor:
+    """Keep the distribution after the requested prefix close to the base model."""
+    losses = []
+    for _ in range(3):
+        with torch.no_grad():
+            reference_probs = reference.next_word_logits(context, vocabulary_size).softmax(dim=-1)
+            next_word = torch.multinomial(reference_probs, 1) + 2
+        logits = policy.next_word_logits(context, vocabulary_size)
+        losses.append(F.kl_div(logits.log_softmax(dim=-1), reference_probs, reduction="batchmean"))
+        context = torch.cat((context, next_word), dim=1)
+    return torch.stack(losses).mean()
+
+
 def post_train(
     model: GPT, index_to_word: dict[int, str], steps: int, eval_samples: int
 ) -> tuple[GPT, dict]:
@@ -167,7 +195,9 @@ def post_train(
             F.kl_div(output.log_softmax(dim=-1), reference, reduction="batchmean")
             for output, reference in zip(logits, reference_probs)
         ) / len(FORMAT_PREFIX)
-        loss = policy_loss + 0.02 * kl_loss
+        prefix_context = torch.cat((contexts, target.expand(contexts.size(0), -1)), dim=1)
+        body_kl = continuation_kl(policy, model, prefix_context, len(word_to_index))
+        loss = policy_loss + 0.02 * kl_loss + 0.15 * body_kl
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -197,7 +227,7 @@ def save_checkpoint(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train Module 9 GPT and RL-post-train its format.")
-    parser.add_argument("--corpus", type=Path, default=Path("data/monte_cristo.txt"))
+    parser.add_argument("--corpus", type=Path, help="Path to a local copy of the Module 9 text.")
     parser.add_argument("--base-checkpoint", type=Path, default=Path("data/module9_gpt.pt"))
     parser.add_argument("--checkpoint", type=Path, default=Path("artifacts/assignment5_rl.pt"))
     parser.add_argument("--base-steps", type=int, default=400)

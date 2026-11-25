@@ -1,0 +1,45 @@
+{
+  "before": {
+    "exact_matches": 0,
+    "samples": 1024,
+    "exact_pass_rate": 0.0,
+    "word_pass_rates": [
+      0.056640625,
+      0.0
+    ],
+    "greedy_matches": 0,
+    "greedy_prompts": 16
+  },
+  "after": {
+    "exact_matches": 862,
+    "samples": 1024,
+    "exact_pass_rate": 0.841796875,
+    "word_pass_rates": [
+      0.8935546875,
+      0.8427734375
+    ],
+    "greedy_matches": 16,
+    "greedy_prompts": 16
+  },
+  "test_prompts": [
+    "they",
+    "now",
+    "perhaps",
+    "there",
+    "one day",
+    "at midnight",
+    "he thought",
+    "she turned",
+    "behind the door",
+    "as he spoke",
+    "they walked slowly",
+    "in the distance",
+    "when they came ashore",
+    "at the next port",
+    "he looked at her",
+    "out in the street"
+  ],
+  "prefix": "the captain",
+  "seed": 42,
+  "rl_steps": 300
+}

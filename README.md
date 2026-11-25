@@ -247,9 +247,10 @@ then updates the pretrained model to begin its continuation with `the captain`.
 The policy samples the first two new words. It earns one point for `the` in
 the first position and one for `captain` in the second. The log probability
 of each sampled word is weighted by its return after subtracting the batch
-mean for that position. A KL penalty to the original model discourages
-unnecessary changes to the next-word distribution. Evaluation measures exact
-prefix matches on 16 held-out prompts with both sampling and greedy decoding.
+mean for that position. KL penalties to the original model keep the word
+distribution close to the base model during and after the target prefix.
+Evaluation measures exact prefix matches on 16 prompts held out from RL
+training, with both sampling and greedy decoding.
 
 ### Train and evaluate
 
@@ -258,7 +259,8 @@ uv run python train_assignment5.py
 ```
 
 The trainer downloads the original text to `data/monte_cristo.txt` when
-needed. To train from a local copy, add `--corpus /path/to/pg1184.txt`.
+needed and retries with Project Gutenberg's alternate server if the main
+server fails. To train from a local copy, add `--corpus /path/to/pg1184.txt`.
 It uses 400 batches of next-word pretraining followed by 300 updates of
 reinforcement learning by default. A compatible Module 9 checkpoint can be
 reused with `--base-checkpoint /path/to/module9_gpt.pt`. It must contain
@@ -267,6 +269,10 @@ reused with `--base-checkpoint /path/to/module9_gpt.pt`. It must contain
 The script saves the trained weights, configuration, and vocabulary to
 `artifacts/assignment5_rl.pt`. It writes the before-and-after format scores
 to `artifacts/assignment5_rl.json`.
+
+The included checkpoint uses seed 42 and the default training settings.
+On the 16 held-out prompts, the exact prefix match rate went from 0/1,024
+to 862/1,024 (84.2%) with sampling, and from 0/16 to 16/16 with greedy decoding.
 
 ### Serve the trained checkpoint with Docker
 
